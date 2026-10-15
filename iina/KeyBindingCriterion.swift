@@ -11,6 +11,7 @@ import Cocoa
 class Criterion: NSObject {
 
   var isPlaceholder = false
+  var isIINACommand = false
 
   var children: [Criterion]
 
@@ -55,16 +56,6 @@ class TextCriterion: Criterion {
     super.init()
   }
 
-  init(name: String, localizedName: String, children: Criterion...) {
-    self.name = name
-    self.localizedName = localizedName
-    super.init()
-
-    for child in children {
-      self.children.append(child)
-    }
-  }
-
   override func displayValue() -> Any {
     return localizedName
   }
@@ -72,7 +63,7 @@ class TextCriterion: Criterion {
 }
 
 
-class TextFieldCriterion: Criterion, NSTextFieldDelegate {
+class TextFieldCriterion: Criterion, NSTextFieldDelegate, NSControlTextEditingDelegate {
 
   private lazy var field = NSTextField(frame: NSRect(x: 0, y: 0, width: 50, height: 18))
 
@@ -90,8 +81,8 @@ class TextFieldCriterion: Criterion, NSTextFieldDelegate {
     return field
   }
 
-  override func controlTextDidChange(_ obj: Notification) {
-    NotificationCenter.default.post(Notification(name: Constants.Noti.keyBindingInputChanged))
+  func controlTextDidChange(_ obj: Notification) {
+    NotificationCenter.default.post(Notification(name: .iinaKeyBindingInputChanged))
   }
 
 }

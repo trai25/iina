@@ -31,10 +31,15 @@ class KeyBindingTranslator {
     "no-osd", "osd-auto", "osd-bar", "osd-msg-bar", "raw", "repeatable", "expand-properties"
   ]
 
-  static func readableCommand(fromAction action: [String]) -> String {
+  static func readableCommand(fromAction action: [String], isIINACommand: Bool = false) -> String {
     var commands = action.filter { !KeyBindingTranslator.UnsupportedCmdPrefix.contains($0) }
     // Command
     let cmd = commands[0]
+
+    // If is IINA command
+    if isIINACommand {
+      return l10nDic["iina." + cmd] ?? cmd
+    }
 
     // If translated
     if let mpvFormat = KeyBindingTranslator.mpvCmdFormat[cmd],
@@ -46,22 +51,22 @@ class KeyBindingTranslator {
         if part.contains("#") {
           // check '#' syntax
           let ss = part.components(separatedBy: "#")
-          data[ss[0]] = commands.at(index) ?? ss[1]
+          data[ss[0]] = commands[at: index] ?? ss[1]
         } else if part.contains(":") {
           // check ':' syntax
           let ss = part.components(separatedBy: ":")
           let key = ss[0]
-          let value = commands.at(index)
+          let value = commands[at: index]
           let choices = ss[1].components(separatedBy: "|")
           let boolKey = key + "_" + (value ?? choices[0])
           data[boolKey] = "true"
-          data[key] = commands.at(index)
+          data[key] = commands[at: index]
         } else if part.hasSuffix("...") {
           var mPart = part
-          mPart.characters.removeLast(3)
+          mPart.removeLast(3)
           data[mPart] = commands[index..<commands.count].joined(separator: " ")
         } else {
-          data[part] = commands.at(index)
+          data[part] = commands[at: index]
         }
       }
       // add translation for property
@@ -83,7 +88,7 @@ class KeyBindingTranslator {
             data["abs"] = "true"
           } else if value.hasPrefix("-") {
             data["bwd"] = "true"
-            data["value"]!.characters.removeFirst()
+            data["value"]!.removeFirst()
           } else {
             data["fwd"] = "true"
           }
@@ -111,15 +116,19 @@ class KeyBindingTranslator {
     return commands.joined(separator: " ")
   }
 
-  static func string(fromCriterions criterions: [Criterion]) -> String {
-    var mapped = criterions.filter { !$0.isPlaceholder }.map { $0.mpvCommandValue }
+  static func string(fromCriteria criteria: [Criterion]) -> String {
+    var mapped = criteria.filter { !$0.isPlaceholder }.map { $0.mpvCommandValue }
 
-    let firstName = (criterions[0] as! TextCriterion).name
+    let firstCriterion = criteria[0] as! TextCriterion
+
+    if firstCriterion.isIINACommand {
+      mapped.insert("@iina", at: 0)
+    }
 
     // special cases
 
     /// [add property add|minus value] (length: 4)s
-    if firstName == "add" {
+    if firstCriterion.name == "add" {
       // - format the number
       if var doubleValue = Double(mapped.popLast()!) {
         let sign = mapped.popLast()
@@ -133,7 +142,7 @@ class KeyBindingTranslator {
     }
 
     /// [seek forward|backward|seek-to value flag] (length: 4)
-    else if firstName == "seek" {
+    else if firstCriterion.name == "seek" {
       // - relative is default value
       if mapped[3] == "relative" {
         mapped.removeLast()
@@ -147,6 +156,16 @@ class KeyBindingTranslator {
       }
       mapped.remove(at: 1)
     }
+
+    /// iina properties
+    else if firstCriterion.name == "cycle" {
+      if let name = (criteria[1] as? TextCriterion)?.name,
+        KeyBindingDataLoader.toggleableIINAProperties.contains(name) {
+        return "@iina toggle-\(name)"
+      }
+    }
+
+
     return mapped.joined(separator: " ")
   }
 

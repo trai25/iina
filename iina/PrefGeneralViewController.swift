@@ -1,5 +1,5 @@
 //
-//  PreferenceGeneralViewController.swift
+//  PrefGeneralViewController.swift
 //  iina
 //
 //  Created by lhc on 27/10/2016.
@@ -7,64 +7,54 @@
 //
 
 import Cocoa
-import MASPreferences
+import Sparkle
 
+@objcMembers
+class PrefGeneralViewController: PreferenceViewController, PreferenceWindowEmbeddable {
 
-class PrefGeneralViewController: NSViewController, MASPreferencesViewController {
-
-  override var nibName: String? {
-    get {
-      return "PrefGeneralViewController"
-    }
+  override var nibName: NSNib.Name {
+    return NSNib.Name("PrefGeneralViewController")
   }
 
-  override var identifier: String? {
-    get {
-      return "general"
-    }
-    set {
-      super.identifier = newValue
-    }
+  var preferenceTabTitle: String {
+    return NSLocalizedString("preference.general", comment: "General")
   }
 
-  var toolbarItemImage: NSImage {
-    get {
-      return NSImage(named: NSImageNamePreferencesGeneral)!
-    }
+  var preferenceTabImage: NSImage {
+    return .sf("gear", withConfiguration: symbolConfiguration)!
   }
 
-  var toolbarItemLabel: String {
-    get {
-      // dirty hack here: layout the view before `MASPreferencesWIndowController` getting `bounds`.
-      view.layoutSubtreeIfNeeded()
-      return NSLocalizedString("preference.general", comment: "General")
-    }
+  override var sectionViews: [NSView] {
+    return [behaviorView, historyView, playlistView, screenshotsView]
   }
 
-  // view size is handled by AutoLayout, so it's not resizable
-  var hasResizableWidth: Bool = false
-  var hasResizableHeight: Bool = false
-
+  @IBOutlet var behaviorView: NSView!
+  @IBOutlet var historyView: NSView!
+  @IBOutlet var playlistView: NSView!
+  @IBOutlet var screenshotsView: NSView!
+  @IBOutlet weak var afterOpenActionBox: NSBox!
+  @IBOutlet weak var pauseActionBox: NSBox!
+  
   override func viewDidLoad() {
     super.viewDidLoad()
-    // Do view setup here.
+    
+    afterOpenActionBox.heightAnchor.constraint(equalToConstant: 42).isActive = true
+    pauseActionBox.heightAnchor.constraint(equalToConstant: 146).isActive = true
   }
-
+  
   // MARK: - IBAction
 
   @IBAction func chooseScreenshotPathAction(_ sender: AnyObject) {
-    let _ = Utility.quickOpenPanel(title: "Choose screenshot save path", isDir: true) {
-      url in
-      UserDefaults.standard.set(url.path, forKey: Preference.Key.screenshotFolder)
+    Utility.quickOpenPanel(title: "Choose screenshot save path", chooseDir: true, sheetWindow: view.window) { url in
+      Preference.set(url.path, for: .screenshotFolder)
       UserDefaults.standard.synchronize()
     }
   }
 
   @IBAction func rememberRecentChanged(_ sender: NSButton) {
-    if sender.state == NSOffState {
-      NSDocumentController.shared().clearRecentDocuments(self)
+    if sender.state == .off {
+      AppDelegate.shared.clearRecentDocuments(self)
     }
   }
-
-
 }
+

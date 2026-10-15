@@ -1,65 +1,76 @@
 # Contributing
 
-Thank you for being interested in IINA.
+Thanks for your interest in contributing to IINA!
 
-First of all, please be tolerant. I'm not a professional in Cocoa development or Swift, so my code, especially early parts may contain stupid logic or design flaws (a refactor is in my plans).
+## Before You Start
 
-If you believe the code structures can be improved, please raise an issue.
+1. **Check the [issue tracker](https://github.com/iina/iina/issues)** to avoid duplicate work and get community input before coding.
+2. **Open a Design Proposal issue** to discuss your idea:
+   - **Required** for UI changes (e.g., sidebar items, toolbar buttons, layout). Including a mockup is recommended.
+   - **Recommended** if the change contains other interactive elements (e.g., new preferences, dialogs) or is large (spanning multiple files, affecting multiple components).
+   - **Optional** for small, self-contained fixes.
+3. **Link your design proposal** in your pull request description. PRs without one (when required) may be closed without review.
 
-## Some Guidelines
+By submitting a pull request,
+- You give the IINA team permission to take over and modify your code at any time,
+  for the sole purpose of merging it into IINA.
+- You agree that your contributions are licensed under the GPLv3 license.
+  In the case of a future IINA release in the App Store,
+  you agree that you will not pursue any license violations that results
+  solely from the conflict between the GPLv3 license and the App Store's terms of service.
 
-- IINA is for modern macOS.
-  - Stay consistent with the design language of macOS.
-  - Stay consistent with behaviors of macOS original Applications.
-- User interface and user experience is important.
-  - Use animations for UI items, if possible.
-  - Use proper font weight, size and color.
-  - Leave margins everywhere.
-- IINA is based on mpv.
-  - Avoid adding features (especially decoding/playback related) that mpv does not provide.
-  - Lua scripts are also a possible solution for some features.
-- Give users more choices.
+## Contribution Workflow
 
-**Technical tips**
+- Follow [README.md](README.md) to set up your environment, including [downloading the pre-compiled dylibs](README.md#using-the-pre-compiled-libraries).
+- Use the [latest public version of Xcode](https://itunes.apple.com/us/app/xcode/id497799835). Around June, a branch for the next macOS version may appear, but main development stays on `develop`.
+- Test thoroughly, including any features that share code with your changes.
+- Rebase on top of `develop` before opening your PR to avoid merge conflicts.
+- Submit separate PRs for unrelated changes.
+- Only include files you intentionally changed. Watch for spurious diffs in:
+  - `project.pbxproj` — may change if signed with a different developer account. Changes from adding/removing files are fine.
+  - `xib` files — discard changes you didn't make.
 
-- Use a XIB for UI if possible for things like as positioning of UI elements, whether a view uses layer, Cocoa bindings, etc.
-- Add proper comments.
-- Use 2 spaces for indentation.
-- There's no fixed guidelines for code style. Maybe later?
+## Localizations
 
-**Current structure**
+We use [Crowdin](https://crowdin.com/project/iina) for localization.
+You must localize any new strings, and only update strings in `Base.lproj` and `en.lproj`.
+Do not include translations for languages other than English.
+(New English strings on `develop` sync to Crowdin automatically, and we fetch translations before each release.)
+
+## AI Usage
+
+AI tools are permitted, but low-quality AI-generated code will likely be rejected. If you use AI:
+
+- You must be responsible for confirming that the code complies with IINA's GPLv3 license.
+- Disclose the AI usage in the PR description.
+  Failure to do while submitting obviously AI-generated code may result in your PR being closed without review.
+- Keep the PR description concise and justify your design choices.
+- Test thoroughly and remove excessive comments.
+
+## Design Guidelines and Code Conventions
+
+- In general, follow the [macOS Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/macos/)
+  and match built-in macOS app behavior.
+- Use system controls with proper font weight, size, and color.
+- Leave margins everywhere. Use animations where appropriate.
+- Give users more choices when possible.
+- Do not introduce new `xib` files, and avoid changing existing ones.
+  Use the helpers in `UIHelper` (for creating common UI components) and
+  `ConstraintsSugar.swift` (for setting up AutoLayout constraints) instead.
+- Add comments only when necessary.
+- In your Xcode settings, use 2-space indentation and remove trailing spaces automatically.
+- No fixed style guide, but we may request changes for consistency with surrounding code.
+
+## Architecture
+
+All new code should follow these guidelines:
 
 - Only `VideoView` and `MPVController` may call mpv APIs directly.
-- `PlayerCore` encapsulates general playback functions.
-  - Setting options/properties directly through `MPVController` is discouraged.
-  - `PlayerCore` should only contain logic that controls playback.
-- Window related logic should be in `MainWindowController`.
-  - `windowDidLoad()`: stuff that should be done once
-  - `windowDidOpen()`: stuff that should be done every time when window shown, like resetting some UI components. Note that window is not necessarily loaded here.
-  - `windowWillClose()`: release / deinitialize 
+- `PlayerCore` encapsulates playback logic. Avoid setting options/properties directly through `MPVController`.
+- Window logic belongs in `MainWindowController`:
+  - `windowDidLoad()` — one-time setup.
+  - `windowDidOpen()` — runs each time the window appears (e.g., resetting UI). The window may not be loaded yet.
+  - `windowWillClose()` — release resources and deinitialize.
+- These files are generated by `other/parse_doc.rb` and **must not** be edited directly: `MPVCommand`, `MPVOption`, `MPVProperty`.
 
-## How to Contribute
-
-**Please open an issue and ask for permission from the author before actually starting doing something** to make sure that there's not someone else working on the same feature.
-
-1. Fork and clone the repository
-2. Follow [the guide to build with pre-compiled dylibs in README.md](README.md#use-pre-compiled-dylibs)
-3. Open `iina.xcworkspace`.
-4. Commit changes, test, push, and submit a pull request.
-
-If you want to build libmpv and other depended dylibs on your own, please refer to [the guide in README.md](README.md#build-with-the-lastest-mpv).
-
-**Pull requests**
-
-- Please set base branch of your pull request to `develop`.
-- If you found `develop` has been updated during your change, remember to do a rebase before opening a pull request:
-
-  ```
-  git rebase upstream/develop
-  ```
-- Please submit separate pull requests for different features.
-- Please make sure the pull request only contains changes made by yourself *intentionally*. Here are some examples:
-  - `Podfile.lock`: This file may change if you have a different Cocoapods version installed. We suggest updating to the latest beta release by `sudo gem install cocoapods --pre`.
-  - `project.pbxproj`: This file may change if you sign the project with a different developer account.
-  - `xib` files: Please discard changes to an `xib` file if you didn't change anything in it.
-  
+If you think this document can be improved, please open an issue.

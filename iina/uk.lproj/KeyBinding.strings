@@ -1,4 +1,4 @@
-/* 
+/*
   KeyBinding.strings
   iina
 
@@ -6,86 +6,113 @@
   Copyright © 2017 lhc. All rights reserved.
 */
 
-"cmd.ignore" = "Ignore";
-"cmd.seek" = "Seek";
-"cmd.revert-seek" = "Revert seek";
-"cmd.set" = "Set";
-"cmd.cycle" = "Cycle";
-"cmd.cycle-values" = "Cycle in";
-"cmd.add" = "Change";
-"cmd.multiply" = "Multiply";
-"cmd.frame-step" = "Next frame";
-"cmd.frame-back-step" = "Previous frame";
-"cmd.ab-loop" = "A-B loop";
-"cmd.sub-seek" = "Sub seek";
-"cmd.playlist-next" = "Next media";
-"cmd.playlist-prev" = "Previous media";
-"cmd.playlist-move" = "Move playlist item";
-"cmd.playlist-clear" = "Clear playlist";
-"cmd.playlist-remove" = "Remove current";
-"cmd.playlist-shuffle" = "Shuffle";
-"cmd.write-watch-later-config" = "Record play history";
-"cmd.stop" = "Stop";
-"cmd.quit" = "Quit";
-"cmd.quit-watch-later" = "Quit (save progress)";
-"cmd.screenshot" = "Screenshot";
-"cmd.screenshot-to-file" = "Screenshot to file";
-"cmd.loadfile" = "Load file";
-"cmd.loadlist" = "Load playlist";
-"cmd.run" = "Run";
+"cmd.ignore" = "Ігнорувати";
+"cmd.seek" = "Перемотати";
+"cmd.revert-seek" = "Зворотнє перемотування";
+"cmd.set" = "Встановити";
+"cmd.cycle" = "Перемкнути";
+"cmd.cycle-values" = "Перемкнути за значеннями";
+"cmd.add" = "Змінити";
+"cmd.multiply" = "Помножити";
+"cmd.frame-step" = "Наступний кадр";
+"cmd.frame-back-step" = "Попередній кадр";
+"cmd.ab-loop" = "Цикл A—B";
+"cmd.sub-seek" = "Перемотати за субтитром";
+"cmd.playlist-next" = "Наступний файл";
+"cmd.playlist-prev" = "Попередній файл";
+"cmd.playlist-move" = "Перемістити елемент плейлиста";
+"cmd.playlist-clear" = "Очистити плейлист";
+"cmd.playlist-remove" = "Прибрати поточний файл";
+"cmd.playlist-shuffle" = "Перемішати";
+"cmd.write-watch-later-config" = "Записати історію перегляду";
+"cmd.stop" = "Зупинити";
+"cmd.quit" = "Завершити";
+"cmd.quit-watch-later" = "Завершити (зберегти позицію)";
+"cmd.screenshot" = "Знімок екрану";
+"cmd.screenshot-to-file" = "Знімок у файл";
+"cmd.loadfile" = "Завантажити файл";
+"cmd.loadlist" = "Завантажити плейлист";
+"cmd.run" = "Запустити";
 
+"iina.flip" = "перевертання";
+"iina.mirror" = "віддзеркалення";
 
-"yes" = "Yes";
-"no" = "No";
-"to" = "to";
-"by" = "by";
-"in" = "in";
-"add" = "add";
-"minus" = "minus";
-"forward" = "forward";
-"backward" = "backward";
-"seek-to" = "to";
+"iina.toggle-pip" = "Режим «Картинка в картинці»";
+"iina.toggle-music-mode" = "Режим музики";
+"iina.open-file" = "Відкрити файл";
+"iina.open-url" = "Відкрити URL";
+"iina.video-panel" = "Панель відео";
+"iina.audio-panel" = "Панель аудіо";
+"iina.sub-panel" = "Панель субтитрів";
+"iina.playlist-panel" = "Панель плейлиста";
+"iina.chapter-panel" = "Панель розділів";
+"iina.bigger-window" = "Збільшити вікно";
+"iina.smaller-window" = "Зменшити вікно";
+"iina.fit-to-screen" = "Допасувати до розмірів екрана";
+"iina.toggle-flip" = "Перемкнути перевертання";
+"iina.toggle-mirror" = "Перемкнути віддзеркалення";
+"iina.save-playlist" = "Зберегти поточний плейлист";
+"iina.show-current-file-in-finder" = "Файл конфігурації з такою самою назвою вже існує. Натисніть Ok, щоб показати файл у Finder";
+"iina.delete-current-file" = "Видалити поточний файл";
+"iina.delete-current-file-hard" = "Видалити поточний файл, оминаючи Смітник";
+"iina.find-online-subs" = "Знайти субтитри в Інтернеті";
+"iina.save-downloaded-sub" = "Зберегти завантажені субтитри";
 
-"relative" = "s";
-"absolute" = "s";
+"yes" = "Так";
+"no" = "Ні";
+"to" = "в";
+"by" = "на";
+"in" = "в";
+"add" = "збільшити";
+"minus" = "зменшити";
+"forward" = "вперед на";
+"backward" = "назад на";
+"seek-to" = "до";
+
+"relative" = " с";
+"absolute" = " с";
 "absolute-percent" = "%";
 "relative-percent" = "%";
-"relative+exact" = "s (exact)";
-"relative-percent+exact" = "% (exact)";
-"absolute+keyframe" = "s (keyframe)";
-"absolute-percent+keyframe" = "% (keyframe)";
+"relative+exact" = " с (точно)";
+"relative-percent+exact" = " % (точно)";
+"absolute+keyframe" = " с (кадр)";
+"absolute-percent+keyframe" = " % (кадр)";
 
-"opt.pause" = "Pause";
-"opt.speed" = "Speed";
+"opt.pause" = "паузу";
+"opt.speed" = "швидкість";
 
-"opt.video" = "Video track";
-"opt.contrast" = "Contrast";
-"opt.brightness" = "Brightness";
-"opt.gamma" = "Gamma";
-"opt.saturation" = "Saturation";
-"opt.deinterlace" = "Deinterlace";
+"opt.window-scale" = "масштаб вікна";
 
-"opt.audio" = "Audio track";
-"opt.volume" = "Volume";
-"opt.mute" = "Mute";
-"opt.audio-delay" = "Audio delay";
+"opt.video" = "відеодоріжку";
+"opt.video-aspect-override" = "пропорції відео";
+"opt.contrast" = "контрастність";
+"opt.brightness" = "яскравість";
+"opt.gamma" = "гаму";
+"opt.saturation" = "насиченість";
+"opt.deinterlace" = "черезрядкову розгортку";
 
-"opt.sub" = "Sub track";
-"opt.sub-delay" = "Sub delay";
-"opt.sub-pos" = "Sub pos";
-"opt.sub-scale" = "Sub scale";
-"opt.sub-visibility" = "Sub visibility";
-"opt.sub-ass-style-override" = "ASS style override";
+"opt.audio" = "аудіодоріжку";
+"opt.volume" = "гучність";
+"opt.mute" = "звук";
+"opt.audio-delay" = "затримку звуку";
 
-"opt.fullscreen" = "Fullscreen";
+"opt.sub" = "доріжку субтитрів";
+"opt.sub-delay" = "затримку субтитрів";
+"opt.sub-pos" = "позицію субтитрів";
+"opt.sub-scale" = "розмір субтитрів";
+"opt.sub-visibility" = "видимість субтитрів";
+"opt.secondary-sub-visibility" = "Видимість додаткових субтитрів";
+"opt.sub-ass-style-override" = "заміщення ASS-стилю";
 
-"opt.chapter" = "Chapter";
+"opt.fullscreen" = "повноекранний режим";
+"opt.ontop" = "плавання зверху";
 
+"opt.chapter" = "розділ";
 
-"read.set" = "Set {{property}} to {{value}}";
-"read.add" = "{{property}} {{value}}";
-"read.multiply" = "Multiply {{property}} by {{factor}}x";
-"read.cycle" = "Cycle {{property}}{{#dir_down}} Downwards{{/dir_down}}";
-"read.cycle-values" = "Cycle {{property}} in ({{{values}}})";
-"read.seek" = "Seek {{#fwd}}forward{{/fwd}}{{#bwd}}backward{{/bwd}}{{#abs}}to{{/abs}} {{value}}{{#sec}}s{{/sec}}{{#per}}%{{/per}} {{#exact}}(exact){{/exact}}{{#kf}}(keyframe){{/kf}}";
-"read.sub-seek" = "Seek to {{#skip_1}}next{{/skip_1}}{{#skip_-1}}previous{{/skip_-1}} subtitle";
+"read.set" = "Встановити {{property}} в значення {{value}}";
+"read.add" = "Змінити {{property}} на {{value}}";
+"read.multiply" = "Помножити {{property}} на {{factor}}x";
+"read.cycle" = "Перемкнути {{property}}{{#dir_down}} вниз{{/dir_down}}";
+"read.cycle-values" = "Перемкнути {{property}} між значеннями ({{{values}}})";
+"read.seek" = "Перемотати {{#fwd}}вперед на{{/fwd}}{{#bwd}}назад на{{/bwd}}{{#abs}}до{{/abs}} {{value}}{{#sec}} с{{/sec}}{{#per}} %{{/per}} {{#exact}} (точно){{/exact}}{{#kf}} (кадр){{/kf}}";
+"read.sub-seek" = "Перемотати до {{#skip_1}}наступного{{/skip_1}}{{#skip_-1}}попереднього{{/skip_-1}} субтитру";

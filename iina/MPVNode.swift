@@ -51,6 +51,16 @@ class MPVNode {
       }
       return dic
 
+    case MPV_FORMAT_BYTE_ARRAY:
+      let array = node.u.ba!.pointee
+      let data = array.data!
+      let size = array.size
+      var byteArray: [UInt8] = []
+      for i in 0 ..< size {
+        byteArray.append(data.load(fromByteOffset: i, as: UInt8.self))
+      }
+      return byteArray
+
     case MPV_FORMAT_NONE:
       return nil
 
@@ -90,7 +100,7 @@ class MPVNode {
     // Array
     case is [Any?]:
       node.format = MPV_FORMAT_NODE_ARRAY
-      // actual aray
+      // actual array
       let objArray = obj as! [Any?]
       // create node ptr
       let nodePtr = UnsafeMutablePointer<mpv_node>.allocate(capacity: objArray.count)
@@ -117,7 +127,7 @@ class MPVNode {
       let objDic = obj as! [String: Any?]
       // create key and value ptr
       let valuePtr = UnsafeMutablePointer<mpv_node>.allocate(capacity: objDic.count)
-      let keyPtr = UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>.allocate(capacity: objDic.count)
+      let keyPtr = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity: objDic.count)
       var valueiPtr = valuePtr
       var keyiPtr = keyPtr
       // assign each key and value ptr
@@ -153,9 +163,9 @@ class MPVNode {
       deallocString(node.u.string)
 
     case MPV_FORMAT_NODE_ARRAY:
-      let list = node.u.list!.pointee
+      let listPtr = node.u.list!
+      let list = listPtr.pointee
       let num = Int(list.num)
-      if num == 0 { return }
       let ptr = list.values!
       var iptr = ptr
       for _ in 0 ..< num {
@@ -163,12 +173,14 @@ class MPVNode {
         iptr = iptr.successor()
       }
       ptr.deinitialize(count: num)
-      ptr.deallocate(capacity: num)
+      ptr.deallocate()
+      listPtr.deinitialize(count: 1)
+      listPtr.deallocate()
 
     case MPV_FORMAT_NODE_MAP:
-      let map = node.u.list!.pointee
+      let listPtr = node.u.list!
+      let map = listPtr.pointee
       let num = Int(map.num)
-      if num == 0 { return }
       let kptr = map.keys!
       let vptr = map.values!
       var ikptr = kptr
@@ -176,13 +188,15 @@ class MPVNode {
       for _ in 0 ..< num {
         if let strptr = ikptr.pointee { deallocString(strptr) }
         self.free(ivptr.pointee)
-        ikptr = kptr.successor()
-        ivptr = vptr.successor()
+        ikptr = ikptr.successor()
+        ivptr = ivptr.successor()
       }
       kptr.deinitialize(count: num)
-      kptr.deallocate(capacity: num)
+      kptr.deallocate()
       vptr.deinitialize(count: num)
-      vptr.deallocate(capacity: num)
+      vptr.deallocate()
+      listPtr.deinitialize(count: 1)
+      listPtr.deallocate()
 
     default:
       break
@@ -190,9 +204,9 @@ class MPVNode {
     }
   }
 
-  private static func allocString(_ str: String) -> UnsafeMutablePointer<Int8> {
+  private static func allocString(_ str: String) -> UnsafeMutablePointer<CChar> {
     let cstring = str.utf8CString
-    let ptr = UnsafeMutablePointer<Int8>.allocate(capacity: cstring.count)
+    let ptr = UnsafeMutablePointer<CChar>.allocate(capacity: cstring.count)
     var iptr = ptr
     for (_, n) in cstring.enumerated() {
       iptr.pointee = n
@@ -201,11 +215,88 @@ class MPVNode {
     return ptr
   }
 
-  private static func deallocString(_ ptr: UnsafeMutablePointer<Int8>) {
+  private static func deallocString(_ ptr: UnsafeMutablePointer<CChar>) {
     let str = String(cString: ptr)
     let len = str.cString(using: .utf8)!.count
     ptr.deinitialize(count: len)
-    ptr.deallocate(capacity: len)
+    ptr.deallocate()
   }
 
+}
+
+extension mpv_node: CustomDebugStringConvertible {
+
+  /// A textual representation of this instance, suitable for debugging.
+  ///
+  /// If the node is an array or a map the string will continue multiple lines.
+  public var debugDescription: String { mpv_node.toString(self) }
+
+  /// Return a textual representation of the given`mpv_node`, suitable for debugging.
+  ///
+  /// If the node is an array or a map the string will continue multiple lines.
+  /// For arrays and maps the string will include all nodes referenced by the given node.
+  /// - Parameter node: The `mpv_node` to return a textual representation of.
+  /// - Parameter indent: Used to control indentation of nested arrays and maps.
+  /// - Returns: A string representing the given node as well as any nodes that node references.
+  private static func toString(_ node: mpv_node, indent: String = "") -> String {
+    switch node.format {
+    case MPV_FORMAT_FLAG:
+      return "MPV_FORMAT_FLAG \(node.u.flag)"
+
+    case MPV_FORMAT_STRING:
+      return "MPV_FORMAT_STRING \(String(cString: node.u.string!))"
+
+    case MPV_FORMAT_INT64:
+      return "MPV_FORMAT_INT64 \(node.u.int64)"
+
+    case MPV_FORMAT_DOUBLE:
+      return "MPV_FORMAT_DOUBLE \(node.u.double_)"
+
+    case MPV_FORMAT_NODE_ARRAY:
+      let list = node.u.list!.pointee
+      var results = "MPV_FORMAT_NODE_ARRAY \(list.num) entries"
+      if list.num == 0 { return results }
+      let deeperIndent = "\(indent)  "
+      var ptr = list.values!
+      for i in 0 ..< list.num {
+        results += "\n\(deeperIndent)[\(i)] \(toString(ptr.pointee, indent: deeperIndent))"
+        ptr = ptr.successor()
+      }
+      return results
+
+    case MPV_FORMAT_NODE_MAP:
+      let map = node.u.list!.pointee
+      var results = "MPV_FORMAT_NODE_MAP \(map.num) entries"
+      // node map can be empty.
+      if map.num == 0 { return results }
+      let deeperIndent = "\(indent)  "
+      var kptr = map.keys!
+      var vptr = map.values!
+      for _ in 0 ..< map.num {
+        results += """
+          \n\(deeperIndent)\(String(cString: kptr.pointee!)) = \
+          \(toString(vptr.pointee, indent: deeperIndent))
+          """
+        kptr = kptr.successor()
+        vptr = vptr.successor()
+      }
+      return results
+
+    case MPV_FORMAT_BYTE_ARRAY:
+      let array = node.u.ba!.pointee
+      let data = array.data!
+      let size = array.size
+      var results = "MPV_FORMAT_BYTE_ARRAY \(size) bytes "
+      for i in 0 ..< size {
+        results += String(data.load(fromByteOffset: i, as: UInt8.self), radix: 16, uppercase: true)
+      }
+      return results
+
+    case MPV_FORMAT_NONE:
+      return "MPV_FORMAT_NONE"
+
+    default:
+      return "Unsupported node format \(node.format.rawValue)"
+    }
+  }
 }

@@ -8,26 +8,40 @@
 
 import Cocoa
 
+fileprivate extension NSColor {
+  static let keyRecordViewBackground = NSColor.controlBackgroundColor.withSystemEffect(.disabled)
+  static let keyRecordViewBackgroundActive = NSColor.controlBackgroundColor
+}
+
 protocol KeyRecordViewDelegate {
-  func recordedKeyDown(with event: NSEvent)
+  func keyRecordView(_ view: KeyRecordView, recordedKeyDownWith event: NSEvent)
 }
 
 class KeyRecordView: NSView {
 
   var delegate: KeyRecordViewDelegate!
 
+  var currentKey: String = ""
+  var currentKeyModifiers: NSEvent.ModifierFlags = []
+
   override func awakeFromNib() {
     wantsLayer = true
-    layer?.backgroundColor = NSColor.lightGray.cgColor
+    layer?.backgroundColor = NSColor.keyRecordViewBackgroundActive.cgColor
     layer?.cornerRadius = 4
   }
 
+  override func updateLayer() {
+    layer?.backgroundColor = NSColor.keyRecordViewBackgroundActive.cgColor
+  }
+  
   override var acceptsFirstResponder: Bool {
     return true
   }
 
   override func keyDown(with event: NSEvent) {
-    delegate.recordedKeyDown(with: event)
+    currentKey = event.charactersIgnoringModifiers ?? ""
+    currentKeyModifiers = event.modifierFlags
+    delegate.keyRecordView(self, recordedKeyDownWith: event)
   }
 
   override func mouseDown(with event: NSEvent) {
@@ -35,13 +49,16 @@ class KeyRecordView: NSView {
   }
 
   override func resignFirstResponder() -> Bool {
-    layer?.backgroundColor = NSColor(calibratedWhite: 0.8, alpha: 1).cgColor
+    effectiveAppearance.applyAppearanceFor {
+      layer?.backgroundColor = NSColor.keyRecordViewBackground.cgColor
+    }
     return true
   }
 
   override func becomeFirstResponder() -> Bool {
-    layer?.backgroundColor = NSColor.lightGray.cgColor
+    effectiveAppearance.applyAppearanceFor {
+      layer?.backgroundColor = NSColor.keyRecordViewBackgroundActive.cgColor
+    }
     return true
   }
-
 }

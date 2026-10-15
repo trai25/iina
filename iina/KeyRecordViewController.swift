@@ -8,7 +8,7 @@
 
 import Cocoa
 
-class KeyRecordViewController: NSViewController, KeyRecordViewDelegate, NSRuleEditorDelegate {
+class KeyRecordViewController: NSViewController, KeyRecordViewDelegate, NSRuleEditorDelegate, NSTextFieldDelegate {
 
   @IBOutlet weak var keyRecordView: KeyRecordView!
   @IBOutlet weak var keyLabel: NSTextField!
@@ -19,6 +19,8 @@ class KeyRecordViewController: NSViewController, KeyRecordViewDelegate, NSRuleEd
 
   private var pendingKey: String?
   private var pendingAction: String?
+
+  @objc dynamic var ready = false
 
   var keyCode: String {
     get {
@@ -55,6 +57,9 @@ class KeyRecordViewController: NSViewController, KeyRecordViewDelegate, NSRuleEd
     ruleEditor.delegate = self
     ruleEditor.addRow(self)
 
+    keyLabel.delegate = self
+    actionTextField.delegate = self
+
     if let pk = pendingKey {
       keyLabel.stringValue = pk
       pendingKey = nil
@@ -64,18 +69,19 @@ class KeyRecordViewController: NSViewController, KeyRecordViewDelegate, NSRuleEd
       pendingAction = nil
     }
 
-    NotificationCenter.default.addObserver(forName: Constants.Noti.keyBindingInputChanged, object: nil, queue: .main) { _ in
+    NotificationCenter.default.addObserver(forName: .iinaKeyBindingInputChanged, object: nil, queue: .main) { [unowned self] _ in
       self.updateCommandField()
     }
   }
 
-  func recordedKeyDown(with event: NSEvent) {
-    keyLabel.stringValue = Utility.mpvKeyCode(from: event)
+  func keyRecordView(_ view: KeyRecordView, recordedKeyDownWith event: NSEvent) {
+    keyLabel.stringValue = KeyCodeHelper.mpvKeyCode(from: event)
+    NotificationCenter.default.post(.init(name: NSControl.textDidChangeNotification, object: keyLabel))
   }
 
   // MARK: - NSRuleEditorDelegate
 
-  func ruleEditor(_ editor: NSRuleEditor, child index: Int, forCriterion criterion: Any?, with rowType: NSRuleEditorRowType) -> Any {
+  func ruleEditor(_ editor: NSRuleEditor, child index: Int, forCriterion criterion: Any?, with rowType: NSRuleEditor.RowType) -> Any {
     if criterion == nil {
       return criterions[index]
     } else {
@@ -83,7 +89,7 @@ class KeyRecordViewController: NSViewController, KeyRecordViewDelegate, NSRuleEd
     }
   }
 
-  func ruleEditor(_ editor: NSRuleEditor, numberOfChildrenForCriterion criterion: Any?, with rowType: NSRuleEditorRowType) -> Int {
+  func ruleEditor(_ editor: NSRuleEditor, numberOfChildrenForCriterion criterion: Any?, with rowType: NSRuleEditor.RowType) -> Int {
     if criterion == nil {
       return criterions.count
     } else {
@@ -112,14 +118,19 @@ class KeyRecordViewController: NSViewController, KeyRecordViewDelegate, NSRuleEd
     default:
       break
     }
+    NotificationCenter.default.post(.init(name: NSControl.textDidChangeNotification, object: keyLabel))
   }
 
   // MARK: - Other
 
   private func updateCommandField() {
     guard let criterions = ruleEditor.criteria(forRow: 0) as? [Criterion] else { return }
-    actionTextField.stringValue = KeyBindingTranslator.string(fromCriterions: criterions)
+    actionTextField.stringValue = KeyBindingTranslator.string(fromCriteria: criterions)
+    NotificationCenter.default.post(.init(name: NSControl.textDidChangeNotification, object: actionTextField))
   }
 
+  func controlTextDidChange(_ obj: Notification) {
+    ready = !keyCode.isEmpty && !action.isEmpty
+  }
 }
 

@@ -3,7 +3,7 @@
 //  iina
 //
 //  Created by lhc on 2/9/16.
-//  Copyright © 2016年 lhc. All rights reserved.
+//  Copyright © 2016 lhc. All rights reserved.
 //
 
 import Cocoa
@@ -38,10 +38,6 @@ class Aspect: NSObject {
 
   init(size: NSSize) {
     self.size = size
-  }
-
-  init(width: CGFloat, height: CGFloat) {
-    self.size = NSMakeSize(width, height)
   }
 
   init?(string: String) {

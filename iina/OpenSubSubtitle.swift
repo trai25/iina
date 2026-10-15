@@ -9,355 +9,388 @@
 import Foundation
 import Just
 import PromiseKit
-import Gzip
 
-final class OpenSubSubtitle: OnlineSubtitle {
+/// Downloader for [Open Subtitles](https://www.opensubtitles.com/).
+/// - Important: This code **should not** be enhanced as the plan is to remove all built-in code for downloading subtitles and
+///              replace it with plug-in implementations.
+class OpenSub {
+  final class Subtitle: OnlineSubtitle {
 
-  var filename: String = ""
-  var langID: String
-  var authorComment: String
-  var addDate: String
-  var rating: String
-  var dlCount: String
-  var movieFPS: String
-  var subDlLink: String
-  var zipDlLink: String
+    private static let dateFormatter: DateFormatter = {
+      let dateFormatter = DateFormatter()
+      dateFormatter.dateStyle = .medium
+      dateFormatter.timeStyle = .none
+      return dateFormatter
+    }()
 
-  init(index: Int, filename: String, langID: String, authorComment: String, addDate: String, rating: String, dlCount: String, movieFPS: String, subDlLink: String, zipDlLink: String) {
-    self.filename = filename
-    self.langID = langID
-    self.authorComment = authorComment
-    self.addDate = addDate
-    self.rating = rating
-    self.dlCount = dlCount
-    self.movieFPS = movieFPS
-    self.subDlLink = subDlLink
-    self.zipDlLink = zipDlLink
-    super.init(index: index)
-  }
+    private let subtitle: OpenSubClient.Subtitle
 
-  override func download(callback: @escaping DownloadCallback) {
-    Just.get(subDlLink) { response in
-      guard response.ok, let data = response.content, let unzipped = try? data.gunzipped() else {
-        callback(.failed)
-        return
+    init(index: Int, subtitle: OpenSubClient.Subtitle) {
+      self.subtitle = subtitle
+      super.init(index: index)
+    }
+
+    /// Asynchronously download this subtitle.
+    ///
+    /// Downloading requires making two separate requests to [Open Subtitles](https://www.opensubtitles.com/).
+    /// Despite its name, the
+    /// [Download](https://opensubtitles.stoplight.io/docs/opensubtitles-api/6be7f6ae2d918-download)
+    /// REST API method does not return the contents subtitle file. The response from this call contains details related to the quota
+    /// imposed by `Open Subtitles` on downloads along with a link that can be used to download the subtitle file contents. Thus
+    /// a second request is required to actually download the subtitle file contents.
+    /// - Returns: A [URL](https://developer.apple.com/documentation/foundation/url) to the file containing
+    ///            the downloaded subtitle.
+    override func download() -> Promise<[URL]> {
+      let fileId = subtitle.attributes.files[0].fileId
+      return OpenSubClient.shared.download(fileId: fileId).then { downloadResponse in
+        OpenSubClient.shared.downloadFileContents(downloadResponse.link).then { data in
+          Promise { resolver in
+            // This check was added after Open Subtitles returned a subtitle file of zero length.
+            // Better to catch this error early to make it obvious what the problem is rather than
+            // creating a zero length file that triggers a failure during loading.
+            if data.isEmpty {
+              resolver.reject(Error.emptyFile(
+                "Subtitle file \"\(downloadResponse.fileName)\" with ID \(fileId) is empty, no contents"))
+              return
+            }
+            let remaining = String(downloadResponse.remaining)
+            let requests = String(downloadResponse.requests)
+            log("Download #\(requests), remaining quota \(remaining), quota resets in \(downloadResponse.resetTime)")
+            let subFilename = "[\(self.index)]\(downloadResponse.fileName)"
+            guard let url = data.saveToFolder(Utility.tempDirURL, filename: subFilename) else {
+              resolver.reject(OnlineSubtitle.CommonError.fsError)
+              return
+            }
+            resolver.fulfill([url])
+          }
+        }
       }
-      let subFilename = "[\(self.index)]\(self.filename)"
-      if let url = unzipped.saveToFolder(Utility.tempDirURL, filename: subFilename) {
-        callback(.ok(url))
+    }
+
+    /// Returns a description of this subtitle suitable for display to the user.
+    /// - Returns: A tuple containing the name of this subtitle and the strings to display in the two other columns shown by the
+    ///            view displayed to the user for choosing the subtitle files to download.
+    override func getDescription() -> (name: String, left: String, right: String) {
+      let attributes = subtitle.attributes
+      var tokens: [String] = []
+
+      tokens.append(attributes.language)
+
+      if let releaseYear = attributes.featureDetails.year, releaseYear > 0 {
+        tokens.append("(\(releaseYear))")
       }
+
+      if let fps = attributes.fps, fps != 0 {
+        tokens.append("\(fps.stringWithMaxFractionDigits2) fps")
+      }
+
+      let downloadCount = "\u{2b07}\(attributes.downloadCount)"
+      tokens.append(downloadCount)
+
+      let fileName = attributes.files[0].fileName
+      let description = tokens.joined(separator: "  ")
+      let uploadDate = OpenSub.Subtitle.dateFormatter.string(from: attributes.uploadDate)
+      return (fileName, description, uploadDate)
     }
   }
 
-}
-
-
-class OpenSubSupport {
-
-  typealias Subtitle = OpenSubSubtitle
-
-  enum OpenSubError: Error {
+  enum Error: Swift.Error {
     // login failed (reason)
     case loginFailed(String)
     // file error
-    case cannotReadFile
-    case fileTooSmall
+    case cannotReadFile(Swift.Error)
+    case fileTooSmall(Int)
     // search failed (reason)
     case searchFailed(String)
-    // user canceled
-    case userCanceled
-    // lower level error
-    case wrongResponseFormat
-    case xmlRpcError(JustXMLRPC.XMLRPCError)
+    case emptyFile(String)
   }
 
-  struct FileInfo {
-    var hashValue: String
-    var fileSize: UInt64
+  class Fetcher: OnlineSubtitle.DefaultFetcher, OnlineSubtitleFetcher {
+    typealias Subtitle = OpenSub.Subtitle
 
-    var dictionary: [String: String] {
-      get {
-        return [
-          "moviehash": hashValue,
-          "moviebytesize": "\(fileSize)"
-        ]
+    /// `True` if currently logged in to [Open Subtitles](https://www.opensubtitles.com), `false` otherwise.
+    override var loggedIn: Bool { OpenSubClient.shared.loggedIn }
+
+    /// Minimum file size imposed by [Open Subtitles](https://www.opensubtitles.org).
+    ///
+    /// Open Subtitles limits the size of movies that it supports. This is documented on the wiki page
+    /// [HashSourceCodes](https://trac.opensubtitles.org/projects/opensubtitles/wiki/HashSourceCodes):
+    ///
+    /// On opensubtitles.org is movie file size limited to **9000000000 > $moviebytesize > 131072 bytes**
+    ///
+    /// - Todo: Enforce the maximum file size.
+    private static let minimumFileSize = 131072
+
+    private let chunkSize: Int = 65536
+
+    private let subChooseViewController = SubChooseViewController()
+
+    private var languages: [String] = {
+      guard let preferredLanguages = Preference.string(for: .subLang) else {
+        Utility.showAlert("sub_lang_not_set")
+        return ["en"]
       }
+      return preferredLanguages.components(separatedBy: ",")
+    }()
+
+    /// The new OpenSubtitle API only supports a fixed set of language codes.
+    /// Here we cache the result so `obtainLanguageCodes()` only needs to be called once.
+    private static var supportedLanguages: [String] = []
+
+    static let shared = Fetcher()
+
+    func fetch(from url: URL, withProviderID id: String, playerCore player: PlayerCore) -> Promise<[Subtitle]> {
+      return login().then { _ in
+        self.obtainLanguageCodes()
+        }.then {
+          self.filterLanguageCodes()
+        }.then {
+          self.hash(url)
+        }.then { hash in
+          self.searchForSubtitles(url, hash, player.getMediaTitle())
+        }.then { subs in
+          self.showSubSelectWindow(with: subs)
+        }
     }
-  }
 
-  typealias ResponseFilesData = [[String: Any]]
-
-  private let chunkSize: Int = 65536
-  private let apiPath = "https://api.opensubtitles.org:443/xml-rpc"
-  private static let serviceName: NSString = "IINA Opensubtitles Account"
-  private let xmlRpc: JustXMLRPC
-
-  var language: String
-  var username: String = ""
-
-  let ua: String = {
-    let version = Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String
-    return "IINA v\(version)"
-  }()
-  var token: String!
-
-  var heartBeatTimer: Timer?
-  let heartbeatInterval = TimeInterval(800)
-
-  static let shared = OpenSubSupport()
-
-  init(language: String? = nil) {
-    self.language = language ?? ""
-    self.xmlRpc = JustXMLRPC(apiPath)
-  }
-
-  func login(testUser username: String? = nil, password: String? = nil) -> Promise<Void> {
-    return Promise { fullfill, reject in
-      var finalUser = ""
-      var finalPw = ""
-      if let testUser = username, let testPw = password {
-        // if test login
-        finalUser = testUser
-        finalPw = testPw
-      } else {
-        // check logged in
-        if self.loggedIn {
-          fullfill()
+    /// Calculate an [Open Subtitles](https://www.opensubtitles.com/) hash code value.
+    ///
+    /// If a hash code is provided when searching for subtitles then `Open Subtitles` will return matching subtitles first in the
+    /// response.
+    ///
+    /// Calculating the hash code is described in detail in the `Open Subtitles` wiki post
+    /// [HashSourceCodes](https://trac.opensubtitles.org/projects/opensubtitles/wiki/HashSourceCodes).
+    /// - Note: If the media is being streamed then it is not possible to calculate the hash code and `nil` will be returned.
+    /// - Parameter url: Location of the media being played.
+    /// - Returns: String containing the hash code or `nil`.
+    func hash(_ url: URL) -> Promise<String?> {
+      return Promise { resolver in
+        guard url.isFileURL else {
+          // Cannot create a hash when streaming.
+          resolver.fulfill(nil)
           return
         }
+        let file: FileHandle
+        do {
+          file = try FileHandle(forReadingFrom: url)
+        } catch {
+          resolver.reject(Error.cannotReadFile(error))
+          return
+        }
+        defer { file.closeFile() }
+
+        file.seekToEndOfFile()
+        let fileSize = file.offsetInFile
+
+        guard fileSize > OpenSub.Fetcher.minimumFileSize else {
+          resolver.reject(Error.fileTooSmall(OpenSub.Fetcher.minimumFileSize))
+          return
+        }
+
+        let offsets: [UInt64] = [0, fileSize - UInt64(chunkSize)]
+
+        var hash = offsets.map { offset -> UInt64 in
+          file.seek(toFileOffset: offset)
+          return file.readData(ofLength: chunkSize).chksum64
+          }.reduce(0, &+)
+
+        hash += fileSize
+
+        resolver.fulfill(String(format: "%016qx", hash))
+      }
+    }
+
+    /// Log in to [Open Subtitles](https://www.opensubtitles.com/).
+    ///
+    /// The `username`/`password` parameters are used to test credentials when the user configuring the account on the
+    /// `Subtitle` tab of IINA's settings. Normally the credentials will be retrieved from the macOS `Keychain`.
+    ///
+    /// This method detects if the user is already logged in and avoids needlessly creating a new user session.
+    /// - Parameters:
+    ///   - username: User name to test or `nil`.
+    ///   - password: Password when testing credentials or `nil`.
+    func login(testUser username: String? = nil, password: String? = nil) -> Promise<Void> {
+      var finalUser: String? = username
+      var finalPw: String? = password
+      if finalUser == nil || finalPw == nil {
+        // check logged in
+        if OpenSubClient.shared.loggedIn {
+          log("Already logged in to Open Subtitles")
+          return .value
+        }
         // read password
-        if let udUsername = UserDefaults.standard.string(forKey: Preference.Key.openSubUsername), !udUsername.isEmpty {
-          let (readResult, readPassword, _) = OpenSubSupport.findPassword(username: udUsername)
-          if readResult == errSecSuccess {
+        if let udUsername = Preference.string(for: .openSubUsername), !udUsername.isEmpty {
+          if let (_, readPassword) = try? KeychainAccess.read(username: udUsername, forService: .openSubAccount) {
             finalUser = udUsername
-            finalPw = readPassword!
+            finalPw = readPassword
           }
         }
       }
-      // login
-      xmlRpc.call("LogIn", [finalUser, finalPw, "eng", ua]) { status in
-        switch status {
-        case .ok(let response):
-          // OK
-          guard let parsed = (response as? [String: Any]) else {
-            reject(OpenSubError.wrongResponseFormat)
-            return
-          }
-          // check status
-          let pStatus = parsed["status"] as! String
-          if pStatus.hasPrefix("200") {
-            self.token = parsed["token"] as! String
-            Utility.log("OpenSub: logged in as user \(finalUser)")
-            self.startHeartbeat()
-            fullfill()
-          } else {
-            Utility.log("OpenSub: login failed, \(pStatus)")
-            reject(OpenSubError.loginFailed(pStatus))
-          }
-        case .failure(_):
-          // Failure
-          reject(OpenSubError.loginFailed("Failure"))
-        case .error(let error):
-          // Error
-          reject(OpenSubError.xmlRpcError(error))
+      guard let finalUser, let finalPw else {
+        log("An Open Subtitles account has not been configured")
+        return .value
+      }
+      return OpenSubClient.shared.login(username: finalUser, password: finalPw).then { response in
+        Promise { resolver in
+          let allowedDownloads = String(response.user.allowedDownloads)
+          let vip = response.user.vip ? " as VIP" : ""
+          log("Logged in to Open Subtitles\(vip), allowed downloads: \(allowedDownloads)")
+          resolver.fulfill(())
         }
+      }.recover { error in
+        throw Error.loginFailed(error.localizedDescription)
       }
     }
-  }
 
-  func hash(_ url: URL) -> Promise<FileInfo> {
-    return Promise { fullfill, reject in
-      guard let file = try? FileHandle(forReadingFrom: url) else {
-        Utility.log("OpenSub: cannot get file handle")
-        reject(OpenSubError.cannotReadFile)
-        return
-      }
-
-      file.seekToEndOfFile()
-      let fileSize = file.offsetInFile
-
-      if fileSize < 131072 {
-        Utility.log("File length less than 131072, skipped")
-        reject(OpenSubError.fileTooSmall)
-      }
-
-      let offsets: [UInt64] = [0, fileSize - UInt64(chunkSize)]
-
-      var hash = offsets.map { offset -> UInt64 in
-        file.seek(toFileOffset: offset)
-        return file.readData(ofLength: chunkSize).chksum64
-        }.reduce(0, &+)
-
-      hash += fileSize
-
-      file.closeFile()
-
-      fullfill(FileInfo(hashValue: String(format: "%016qx", hash), fileSize: fileSize))
-    }
-  }
-
-  func request(_ info: FileInfo) -> Promise<[OpenSubSubtitle]> {
-    return Promise { fullfill, reject in
-      let limit = 100
-      var requestInfo = info.dictionary
-      requestInfo["sublanguageid"] = self.language
-      xmlRpc.call("SearchSubtitles", [token, [requestInfo], ["limit": limit]]) { status in
-        switch status {
-        case .ok(let response):
-          // OK
-          guard let parsed = (response as? [String: Any]) else {
-            reject(OpenSubError.wrongResponseFormat)
-            return
-          }
-          // check status
-          let pStatus = parsed["status"] as! String
-          guard pStatus.hasPrefix("200") else {
-            reject(OpenSubError.searchFailed(pStatus))
-            return
-          }
-          // get data
-          guard let pData = (parsed["data"] as? ResponseFilesData) else {
-            reject(OpenSubError.wrongResponseFormat)
-            return
-          }
-          var result: [OpenSubSubtitle] = []
-          for (index, subData) in pData.enumerated() {
-            let sub = OpenSubSubtitle(index: index,
-                                      filename: subData["SubFileName"] as! String,
-                                      langID: subData["SubLanguageID"] as! String,
-                                      authorComment: subData["SubAuthorComment"] as! String,
-                                      addDate: subData["SubAddDate"] as! String,
-                                      rating: subData["SubRating"] as! String,
-                                      dlCount: subData["SubDownloadsCnt"] as! String,
-                                      movieFPS: subData["MovieFPS"] as! String,
-                                      subDlLink: subData["SubDownloadLink"] as! String,
-                                      zipDlLink: subData["ZipDownloadLink"] as! String)
-            result.append(sub)
-          }
-          fullfill(result)
-        case .failure(_):
-          // Failure
-          reject(OpenSubError.searchFailed("Failure"))
-        case .error(let error):
-          // Error
-          reject(OpenSubError.xmlRpcError(error))
+    /// Obtain supported language codes.
+    func obtainLanguageCodes() -> Promise<Void> {
+      guard Fetcher.supportedLanguages.isEmpty else { return .value }
+      return OpenSubClient.shared.languages().then { response in
+        Promise { resolver in
+          Fetcher.supportedLanguages = response.data.map { $0.languageCode }
+          resolver.fulfill(())
         }
+      }.recover { error in
+        throw OnlineSubtitle.CommonError.networkError(error)
       }
     }
-  }
 
-  func showSubSelectWindow(subs: [OpenSubSubtitle]) -> Promise<[OpenSubSubtitle]> {
-    return Promise { fullfill, reject in
-      // return when found 0 or 1 sub
-      if subs.count <= 1 {
-        fullfill(subs)
-        return
-      }
-      let subSelectWindow = (NSApp.delegate as! AppDelegate).subSelectWindow
-      subSelectWindow.whenUserAction = { subs in
-        fullfill(subs)
-      }
-      subSelectWindow.whenUserClosed = {
-        reject(OpenSubError.userCanceled)
-      }
-      DispatchQueue.main.async {
-        subSelectWindow.showWindow(self)
-        subSelectWindow.arrayController.content = nil
-        subSelectWindow.arrayController.add(contentsOf: subs)
-      }
-    }
-  }
+    /// Filter out unsupported language codes.
+    ///
+    /// IINA's `Preferred language` setting is used when automatically loading local subtitle files as well as when downloading
+    /// from subtitle sites. As a result it may contain language codes not supported by Open Subtitles. When logging is enabled this
+    /// method will log the language codes in the setting that are not supported by Open Subtitles and will be ignored. This is only
+    /// done for ease of debugging.
+    func filterLanguageCodes() -> Promise<Void> {
+      let supportedCodes = Fetcher.supportedLanguages
+      log("Preferred languages: \(languages.sorted().joined(separator: ","))")
+      log("Supported languages: \(supportedCodes.sorted().joined(separator: ","))")
 
-  static func savePassword(username: String, passwd: String) -> OSStatus {
-    let service = OpenSubSupport.serviceName as NSString
-    let accountName = username as NSString
-    let pw = passwd as NSString
-    let pwData = pw.data(using: String.Encoding.utf8.rawValue)! as NSData
-
-    let status: OSStatus
-    // try read password
-    let (readResult, _, readItemRef) = findPassword(username: username)
-    if readResult == errSecSuccess {
-      // else, try modify the password
-      status = SecKeychainItemModifyContent(readItemRef!,
-                                            nil,
-                                            UInt32(pw.length),
-                                            pwData.bytes)
-    } else {
-      // if can't read, try add password
-      status = SecKeychainAddGenericPassword(nil,
-                                             UInt32(service.length),
-                                             service.utf8String,
-                                             UInt32(accountName.length),
-                                             accountName.utf8String,
-                                             UInt32(pw.length),
-                                             pwData.bytes,
-                                             nil)
-    }
-    return status
-  }
-
-  static func findPassword(username: String) -> (OSStatus, String?, SecKeychainItem?) {
-    let service = OpenSubSupport.serviceName as NSString
-    let accountName = username as NSString
-    var pwLength = UInt32()
-    var pwData: UnsafeMutableRawPointer? = nil
-    var itemRef: SecKeychainItem? = nil
-    let status = SecKeychainFindGenericPassword(nil,
-                                                UInt32(service.length),
-                                                service.utf8String,
-                                                UInt32(accountName.length),
-                                                accountName.utf8String,
-                                                &pwLength,
-                                                &pwData,
-                                                &itemRef)
-    var password: String? = ""
-    if status == errSecSuccess {
-      let data = Data(bytes: pwData!, count: Int(pwLength))
-      password = String(data: data, encoding: .utf8)
-    }
-    if pwData != nil {
-      SecKeychainItemFreeContent(nil, pwData)
-    }
-    return (status, password, itemRef)
-  }
-
-  private func startHeartbeat() {
-    heartBeatTimer = Timer(timeInterval: heartbeatInterval, target: self, selector: #selector(sendHeartbeat), userInfo: nil, repeats: true)
-  }
-
-  @objc private func sendHeartbeat() {
-    xmlRpc.call("NoOperation", [token]) { result in
-      switch result {
-      case .ok(let value):
-        // 406 No session
-        if let pValue = value as? [String: Any], (pValue["status"] as? String ?? "").hasPrefix("406") {
-          Utility.log("OpenSub: heartbeat no session")
-          self.token = nil
-          self.login().catch { err in
-            switch err {
-            case OpenSubError.loginFailed(let reason):
-              Utility.log("OpenSub: (re-login) \(reason)")
-              PlayerCore.shared.sendOSD(.cannotLogin)
-            case OpenSubError.xmlRpcError(let error):
-              Utility.log("OpenSub: (re-login) \(error.readableDescription)")
-              PlayerCore.shared.sendOSD(.networkError)
-            default:
-              Utility.log("OpenSub: (re-login) other error")
-            }
-          }
+      var ignoredCodes: [String] = []
+      var filteredCodes: [String] = []
+      for language in languages {
+        if supportedCodes.contains(language) {
+          filteredCodes.append(language)
         } else {
-          Utility.log("OpenSub: heartbeat ok")
+          ignoredCodes.append(language)
         }
-      default:
-        Utility.log("OpenSub: heartbeat failed")
-        self.token = nil
+      }
+
+      if filteredCodes.isEmpty {
+        log("None of the preferred languages are supported: \(ignoredCodes); using en", level: .warning)
+        filteredCodes = ["en"]
+      } else if !ignoredCodes.isEmpty {
+        log("The following preferred languages will be ignored: \(ignoredCodes)")
+      } else {
+        log("All preferred languages are supported")
+      }
+      languages = filteredCodes
+      return .value
+    }
+
+    /// Logout of the user session.
+    ///
+    /// Open Subtitles requests that applications logout of of user sessions so that they can free resources. This is discussed in the
+    /// [Best Practices](https://opensubtitles.stoplight.io/docs/opensubtitles-api/6ef2e232095c7-best-practices)
+    /// section of the Open Subtitles REST API documentation.
+    /// - Parameter timeout: The timeout to to use for the request.
+    override func logout(timeout: TimeInterval? = nil) -> Promise<Void> {
+      guard OpenSubClient.shared.loggedIn else {
+        log("Not logged in to Open Subtitles")
+        return .value
+      }
+      log("Logging out of Open Subtitles")
+      return OpenSubClient.shared.logout(timeout: timeout).asVoid().done {
+        log("Logged out of Open Subtitles")
+      }
+    }
+
+    /// Search [Open Subtitles](https://www.opensubtitles.com/) for subtitles for the given movie.
+    ///
+    /// If no subtitles are found this method will fail with the error `noResult`.
+    /// - Parameters:
+    ///   - url: A [URL](https://developer.apple.com/documentation/foundation/url) to the movie to search
+    ///          for subtitles for.
+    ///   - hash: An [Open Subtitles](https://www.opensubtitles.com/) hash code value or `nil`.
+    ///   - mediaTitle: The title of the movie.
+    /// - Returns: An array containing one or more `Subtitle` objects.
+    func searchForSubtitles(_ url: URL, _ hash: String?, _ mediaTitle: String) -> Promise<[Subtitle]> {
+      // When streaming prefer the movie's title.
+      let searchString = url.isFileURL ? url.deletingPathExtension().lastPathComponent : mediaTitle
+      if let hash {
+        log("Searching for subtitles of movies with hash \(hash) and matching '\(searchString)'")
+      } else {
+        log("Searching for subtitles of movies matching '\(searchString)'")
+      }
+      return OpenSubClient.shared.subtitles(languages: languages, hash: hash, query: searchString).then { response in
+        Promise { resolver in
+          guard response.totalCount != 0 else {
+            resolver.reject(OnlineSubtitle.CommonError.noResult)
+            return
+          }
+          var result: [Subtitle] = []
+          for (index, subData) in response.data.enumerated() {
+            guard subData.type == "subtitle" else {
+              log("Ignoring result with unexpected type: \(subData.type), subtitle ID: \(subData.id)",
+                  level: .warning)
+              continue
+            }
+            guard !subData.attributes.files.isEmpty else {
+              // Should not occur according to the Open Subtitles REST API documentation which
+              // indicates this array must contain at least one entry. However results returned
+              // have sometimes violated other documented behavior so it is critical to validate
+              // the data returned.
+              log("Ignoring result missing file information, subtitle ID: \(subData.id)",
+                  level: .warning)
+              continue
+            }
+            result.append(Subtitle(index: index, subtitle: subData))
+          }
+          guard !result.isEmpty else {
+            // The normal case where no subtitles were found is caught above. The subtitles returned
+            // must have been ignored.
+            resolver.reject(OnlineSubtitle.CommonError.noResult)
+            return
+          }
+          resolver.fulfill((result))
+        }
+      }.recover { error -> Promise<[Subtitle]> in
+        switch error {
+        case OnlineSubtitle.CommonError.noResult:
+          throw error
+        default:
+          throw Error.searchFailed(error.localizedDescription)
+        }
+      }
+    }
+
+    func showSubSelectWindow(with subs: [Subtitle]) -> Promise<[Subtitle]> {
+      return Promise { resolver in
+        // return when found 0 or 1 sub
+        if subs.count <= 1 {
+          resolver.fulfill(subs)
+          return
+        }
+        subChooseViewController.subtitles = subs
+        subChooseViewController.context = self
+
+        subChooseViewController.userDoneAction = { subs in
+          resolver.fulfill(subs as! [Subtitle])
+        }
+        subChooseViewController.userCanceledAction = {
+          resolver.reject(OnlineSubtitle.CommonError.canceled)
+        }
+        PlayerCore.active.sendOSD(.foundSub(subs.count), autoHide: false, accessoryView: subChooseViewController.view)
+        subChooseViewController.tableView.reloadData()
       }
     }
   }
 
-  var loggedIn: Bool {
-    return token != nil
+  private static func log(_ message: @autoclosure () -> String, level: Logger.Level = .debug) {
+    Logger.log(message, level: level, subsystem: Logger.Sub.opensub)
   }
+}
 
+extension Logger.Sub {
+  static let opensub = Logger.makeSubsystem("opensub")
 }
